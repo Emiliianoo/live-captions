@@ -49,6 +49,17 @@ jobs:
       # The two steps below only run for a push to main. A push to dev or a
       # pull request stops after the checks above.
 
+      # whisper_ggml compiles C++ code and asks for these exact NDK and CMake
+      # versions. GitHub's machine has other versions, so install these two.
+      # `yes |` answers "y" to every license question; without accepting the
+      # licenses first, the NDK is skipped and the build fails.
+      - name: Install the Android NDK and CMake
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          yes | "$SDKMANAGER" --install "ndk;29.0.13113456" "cmake;3.22.1"
+
       # --split-per-abi makes one APK per processor type instead of a big
       # one with all of them. The build number goes up with every run, so
       # Android sees each APK as newer.
