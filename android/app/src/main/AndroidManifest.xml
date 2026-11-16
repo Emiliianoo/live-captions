@@ -4,7 +4,7 @@
     <!-- Only used the first time, to download the speech model. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="live_captions"
+        android:label="Live Captions"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

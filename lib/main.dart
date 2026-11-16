@@ -18,7 +18,7 @@ class LiveCaptionsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Subtítulos en vivo',
+      title: 'Live Captions',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: const CaptionScreen(),
