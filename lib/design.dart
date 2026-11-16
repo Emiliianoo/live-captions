@@ -39,7 +39,6 @@ const defaultFontSize = 28.0;
 const minFontSize = 20.0;
 const maxFontSize = 48.0;
 const fontSizeStep = 4.0;
-const translationScale = 0.7; // Translation size compared to the original.
 const tagFontSize = 14.0;
 const tagWidth = 36.0; // Left column that holds the EN/ES tag.
 

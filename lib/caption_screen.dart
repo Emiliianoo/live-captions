@@ -188,24 +188,50 @@ Widget buildCaptionList(
   if (lines.isEmpty) return buildEmptyHint(modelStatus);
 
   final newestFirst = lines.reversed.toList();
-  return ListView(
-    // Reversed: the newest line sits at the bottom and the user scrolls up
-    // to read older lines that are still in memory.
-    reverse: true,
-    padding: const EdgeInsets.fromLTRB(
-      spaceMedium,
-      spaceMedium,
-      spaceMedium,
-      spaceCompact,
-    ),
+  // Stack: the clear button floats over the top right corner of the list.
+  return Stack(
     children: [
-      for (var position = 0; position < newestFirst.length; position++)
-        buildCaptionLine(
-          newestFirst[position],
-          fontSize,
-          opacityForPosition(position),
+      ListView(
+        // Reversed: the newest line sits at the bottom and the user scrolls
+        // up to read older lines that are still in memory.
+        reverse: true,
+        padding: const EdgeInsets.fromLTRB(
+          spaceMedium,
+          // Room for the clear button, so it never hides the oldest line.
+          sideButtonSize + spaceMedium,
+          spaceMedium,
+          spaceCompact,
         ),
+        children: [
+          for (var position = 0; position < newestFirst.length; position++)
+            buildCaptionLine(
+              newestFirst[position],
+              fontSize,
+              opacityForPosition(position),
+            ),
+        ],
+      ),
+      Positioned(
+        top: spaceSmall,
+        right: spaceMedium,
+        child: buildClearButton(),
+      ),
     ],
+  );
+}
+
+Widget buildClearButton() {
+  return IconButton(
+    onPressed: clearCaptions,
+    tooltip: 'Borrar conversación',
+    iconSize: 24,
+    style: IconButton.styleFrom(
+      // Lighter than the caption cards, so it stands out on top of them.
+      backgroundColor: trackColor,
+      foregroundColor: originalColor,
+      fixedSize: const Size.square(sideButtonSize),
+    ),
+    icon: const Icon(Icons.delete_sweep_rounded),
   );
 }
 
@@ -274,10 +300,13 @@ Widget buildCaptionLine(CaptionLine line, double fontSize, double opacity) {
     letterSpacing: -0.2, // Large text reads better slightly tighter.
     fontFeatures: tabularFigures,
   );
+  // Same size as the original: the Spanish is what the agent reads.
   final translationStyle = TextStyle(
     color: translationColor,
-    fontSize: fontSize * translationScale,
+    fontSize: fontSize,
+    fontWeight: FontWeight.w500,
     height: 1.3,
+    letterSpacing: -0.2,
     fontFeatures: tabularFigures,
   );
 

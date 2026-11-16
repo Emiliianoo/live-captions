@@ -59,6 +59,11 @@ void replaceLastLine(
   captions.value = [...finalLines, newLine];
 }
 
+/// Removes every line, for when a new conversation starts.
+void clearCaptions() {
+  captions.value = [];
+}
+
 /// Removes the partial line. Used when a sentence turns out to be only noise.
 void removePartial() {
   captions.value = captions.value.where((line) => line.isFinal).toList();

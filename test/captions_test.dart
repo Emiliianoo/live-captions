@@ -43,4 +43,13 @@ void main() {
 
     expect(removeOldLines([partial], now), [partial]);
   });
+
+  test('clearing removes every line, including the partial', () {
+    showFinal('Hello', 'Hola', 'en');
+    showPartial('How are', 'en');
+
+    clearCaptions();
+
+    expect(captions.value, isEmpty);
+  });
 }
