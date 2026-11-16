@@ -3,54 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'audio.dart';
 import 'captions.dart';
-import 'fake_captions.dart';
-
-// ---- Design system: every color, size and duration the screen uses ----
-
-const backgroundColor = Color(0xFF000000);
-const originalColor = Color(0xFFFFFFFF);
-const translationColor = Color(0xFF9CC7E8); // Soft blue.
-const partialColor = Color(0xFF9A9A9A); // Gray: not confirmed yet.
-const mutedColor = Color(0xFFB0B0B0); // Language tag and hints.
-const disabledColor = Color(0xFF4D4D4D);
-const accentColor = Color(0xFFFFC53D); // Amber: numbers and the main button.
-
-const spaceSmall = 8.0;
-const spaceMedium = 16.0;
-const spaceLarge = 24.0;
-const spaceXLarge = 32.0;
-
-const defaultFontSize = 28.0;
-const minFontSize = 20.0;
-const maxFontSize = 48.0;
-const fontSizeStep = 4.0;
-const translationScale = 0.7; // Translation size compared to the original.
-const tagFontSize = 14.0;
-const tagWidth = 40.0; // Left column that holds the EN/ES tag.
-
-const mainButtonSize = 72.0;
-const sideButtonSize = 56.0;
-
-const quickAnimation = Duration(milliseconds: 200);
-const gentleAnimation = Duration(milliseconds: 400);
-
-/// Opacity of each line counting from the newest one. Lines past the fifth
-/// keep the last value, so old text is still readable when scrolling back.
-const lineOpacities = [1.0, 0.9, 0.8, 0.7, 0.6];
-
-/// Tabular figures give every digit the same width, so a number does not
-/// wobble sideways while the partial line grows.
-const tabularFigures = [FontFeature.tabularFigures()];
-
-const digitStyle = TextStyle(color: accentColor, fontWeight: FontWeight.w700);
-
-const tagStyle = TextStyle(
-  color: mutedColor,
-  fontSize: tagFontSize,
-  fontWeight: FontWeight.w600,
-  letterSpacing: 1,
-);
+import 'debug_panel.dart';
+import 'design.dart';
 
 /// How often we check for lines older than 3 minutes.
 const cleanupInterval = Duration(seconds: 10);
@@ -66,10 +22,10 @@ class CaptionScreen extends StatefulWidget {
 
 class _CaptionScreenState extends State<CaptionScreen> {
   double fontSize = defaultFontSize;
-  Timer? fakeTimer; // Null while paused.
+  bool isRunning = false;
+  bool isSwitching = false; // True while the mic is starting or stopping.
+  bool showDebugPanel = false;
   late Timer cleanupTimer;
-
-  bool get isRunning => fakeTimer != null;
 
   @override
   void initState() {
@@ -81,21 +37,33 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
   @override
   void dispose() {
-    fakeTimer?.cancel();
+    stopListening(showChunk);
     cleanupTimer.cancel();
     WakelockPlus.disable();
     super.dispose();
   }
 
-  void toggleRunning() {
-    setState(() {
+  Future<void> toggleRunning() async {
+    // Ignore a second tap while the first one is still being handled.
+    if (isSwitching) return;
+    isSwitching = true;
+    try {
       if (isRunning) {
-        fakeTimer?.cancel();
-        fakeTimer = null;
-      } else {
-        fakeTimer = startFakeCaptions();
+        await stopListening(showChunk);
+        setState(() => isRunning = false);
+        return;
       }
-    });
+
+      final started = await startListening(showChunk);
+      if (!mounted) return; // The screen was closed while we waited.
+      if (!started) {
+        showMicPermissionMessage(context);
+        return;
+      }
+      setState(() => isRunning = true);
+    } finally {
+      isSwitching = false;
+    }
   }
 
   void changeFontSize(double change) {
@@ -111,13 +79,27 @@ class _CaptionScreenState extends State<CaptionScreen> {
         child: Column(
           children: [
             Expanded(
-              // Rebuilds only the list every time the captions change.
-              child: ValueListenableBuilder<List<CaptionLine>>(
-                valueListenable: captions,
-                builder: (context, lines, _) {
-                  return buildCaptionList(lines, fontSize);
+              // A long press on the captions shows or hides the debug panel.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque, // Empty areas count too.
+                onLongPress: () {
+                  setState(() => showDebugPanel = !showDebugPanel);
                 },
+                // Rebuilds only the list every time the captions change.
+                child: ValueListenableBuilder<List<CaptionLine>>(
+                  valueListenable: captions,
+                  builder: (context, lines, _) {
+                    return buildCaptionList(lines, fontSize);
+                  },
+                ),
               ),
+            ),
+            // Slides the panel open and closed instead of making it jump.
+            AnimatedSize(
+              duration: quickAnimation,
+              child: showDebugPanel
+                  ? buildDebugPanel()
+                  : const SizedBox(width: double.infinity),
             ),
             buildControls(
               isRunning: isRunning,
@@ -135,6 +117,28 @@ class _CaptionScreenState extends State<CaptionScreen> {
       ),
     );
   }
+}
+
+/// Placeholder until there is transcription: shows the kind and length of
+/// each audio chunk ("parcial 1.8 s", "final 3.2 s"). The empty strings are
+/// where the translation and the language will go.
+void showChunk(List<int> samples, bool isFinal) {
+  final seconds = (samples.length / sampleRate).toStringAsFixed(1);
+  if (isFinal) {
+    showFinal('final $seconds s', '', '');
+  } else {
+    showPartial('parcial $seconds s', '');
+  }
+}
+
+void showMicPermissionMessage(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Sin permiso de micrófono. Actívalo en los ajustes del teléfono.',
+      ),
+    ),
+  );
 }
 
 // ---- Caption list ----
