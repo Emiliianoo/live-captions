@@ -7,7 +7,8 @@ plugins {
 android {
     namespace = "com.emiliianoo.live_captions"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // whisper_ggml needs this NDK version; newer ones are backward compatible.
+    ndkVersion = "29.0.13113456"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
