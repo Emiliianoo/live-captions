@@ -1,0 +1,72 @@
+# Checks the app on every push to dev or main, and on every pull request to
+# them. Only a push to main also builds the Android app and publishes it as a
+# GitHub release, so the APK can be downloaded from the Releases page.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# Lets the workflow create a release in this repository.
+permissions:
+  contents: write
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v7
+
+      # Same Java and Flutter versions as the development machine.
+      - name: Install Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.50.0
+          cache: true
+
+      - name: Get the packages
+        run: flutter pub get
+
+      # Without --no-fatal-infos, small notices (like the material.dart
+      # deprecation) would fail the check. Warnings and errors still do.
+      - name: Analyze the code
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run the tests
+        run: flutter test
+
+      # The two steps below only run for a push to main. A push to dev or a
+      # pull request stops after the checks above.
+
+      # --split-per-abi makes one APK per processor type instead of a big
+      # one with all of them. The build number goes up with every run, so
+      # Android sees each APK as newer.
+      - name: Build the APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: >
+          flutter build apk --release
+          --split-per-abi
+          --build-number ${{ github.run_number }}
+
+      - name: Publish the release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # arm64 is the processor type of current Android phones.
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk live-captions.apk
+          gh release create "build-${{ github.run_number }}" live-captions.apk \
+            --target "${{ github.sha }}" \
+            --title "Live Captions build ${{ github.run_number }}" \
+            --generate-notes
