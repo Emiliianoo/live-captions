@@ -59,6 +59,11 @@ void replaceLastLine(
   captions.value = [...finalLines, newLine];
 }
 
+/// Removes the partial line. Used when a sentence turns out to be only noise.
+void removePartial() {
+  captions.value = captions.value.where((line) => line.isFinal).toList();
+}
+
 /// Returns the lines without the final ones older than [maxLineAge].
 /// [now] is a parameter so a test can pretend that time has passed.
 List<CaptionLine> removeOldLines(List<CaptionLine> lines, DateTime now) {

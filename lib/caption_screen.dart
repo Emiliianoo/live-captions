@@ -7,6 +7,7 @@ import 'audio.dart';
 import 'captions.dart';
 import 'debug_panel.dart';
 import 'design.dart';
+import 'transcribe.dart';
 
 /// How often we check for lines older than 3 minutes.
 const cleanupInterval = Duration(seconds: 10);
@@ -27,34 +28,60 @@ class _CaptionScreenState extends State<CaptionScreen> {
   bool showDebugPanel = false;
   late Timer cleanupTimer;
 
+  /// 'checking', 'downloading', 'ready' or 'failed'.
+  String modelStatus = 'checking';
+
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable(); // Keep the screen on while this screen is open.
     // Old lines are removed even while paused, so text never lingers.
     cleanupTimer = Timer.periodic(cleanupInterval, (_) => removeOldCaptions());
+    prepareModel();
+  }
+
+  /// Gets the Whisper model ready. The first time, this downloads it.
+  Future<void> prepareModel() async {
+    // Show the download message only when a download is really needed.
+    if (!await isWhisperModelDownloaded()) {
+      setState(() => modelStatus = 'downloading');
+    }
+    try {
+      await downloadWhisperModel();
+      setState(() => modelStatus = 'ready');
+    } catch (error) {
+      debugPrint('Model download failed: $error'); // Usually: no internet.
+      setState(() => modelStatus = 'failed');
+    }
   }
 
   @override
   void dispose() {
-    stopListening(showChunk);
+    stopListening(transcribeChunk);
     cleanupTimer.cancel();
     WakelockPlus.disable();
     super.dispose();
   }
 
   Future<void> toggleRunning() async {
+    // After a failed download, the button tries the download again.
+    if (modelStatus == 'failed') {
+      prepareModel();
+      return;
+    }
+    if (modelStatus != 'ready') return;
+
     // Ignore a second tap while the first one is still being handled.
     if (isSwitching) return;
     isSwitching = true;
     try {
       if (isRunning) {
-        await stopListening(showChunk);
+        await stopListening(transcribeChunk);
         setState(() => isRunning = false);
         return;
       }
 
-      final started = await startListening(showChunk);
+      final started = await startListening(transcribeChunk);
       if (!mounted) return; // The screen was closed while we waited.
       if (!started) {
         showMicPermissionMessage(context);
@@ -89,7 +116,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
                 child: ValueListenableBuilder<List<CaptionLine>>(
                   valueListenable: captions,
                   builder: (context, lines, _) {
-                    return buildCaptionList(lines, fontSize);
+                    return buildCaptionList(lines, fontSize, modelStatus);
                   },
                 ),
               ),
@@ -104,7 +131,8 @@ class _CaptionScreenState extends State<CaptionScreen> {
             ),
             buildControls(
               isRunning: isRunning,
-              onToggle: toggleRunning,
+              // Disabled while the model downloads.
+              onToggle: modelStatus == 'downloading' ? null : toggleRunning,
               // A null callback disables the button at the size limits.
               onSmaller: fontSize > minFontSize
                   ? () => changeFontSize(-fontSizeStep)
@@ -117,18 +145,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
         ),
       ),
     );
-  }
-}
-
-/// Placeholder until there is transcription: shows the kind and length of
-/// each audio chunk ("parcial 1.8 s", "final 3.2 s"). The empty strings are
-/// where the translation and the language will go.
-void showChunk(List<int> samples, bool isFinal) {
-  final seconds = (samples.length / sampleRate).toStringAsFixed(1);
-  if (isFinal) {
-    showFinal('final $seconds s', '', '');
-  } else {
-    showPartial('parcial $seconds s', '');
   }
 }
 
@@ -159,8 +175,12 @@ void showMicPermissionMessage(BuildContext context) {
 
 // ---- Caption list ----
 
-Widget buildCaptionList(List<CaptionLine> lines, double fontSize) {
-  if (lines.isEmpty) return buildEmptyHint();
+Widget buildCaptionList(
+  List<CaptionLine> lines,
+  double fontSize,
+  String modelStatus,
+) {
+  if (lines.isEmpty) return buildEmptyHint(modelStatus);
 
   final newestFirst = lines.reversed.toList();
   return ListView(
@@ -189,7 +209,19 @@ double opacityForPosition(int positionFromNewest) {
   return lineOpacities[positionFromNewest];
 }
 
-Widget buildEmptyHint() {
+/// What the screen says while there are no captions.
+Widget buildEmptyHint(String modelStatus) {
+  var title = 'Listo para escuchar';
+  var hint = 'Toca iniciar y acerca el teléfono a la bocina.';
+  if (modelStatus == 'downloading') {
+    title = 'Descargando el modelo de voz';
+    hint = 'Solo pasa la primera vez. Conéctate a wifi.';
+  }
+  if (modelStatus == 'failed') {
+    title = 'No se pudo descargar el modelo';
+    hint = 'Revisa tu conexión y toca iniciar para reintentar.';
+  }
+
   return Center(
     child: Padding(
       padding: const EdgeInsets.all(spaceXLarge),
@@ -203,20 +235,25 @@ Widget buildEmptyHint() {
               color: surfaceColor,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.mic_none_rounded,
-              color: mutedColor,
-              size: 32,
-            ),
+            // A spinner while downloading, the mic icon the rest of the time.
+            child: modelStatus == 'downloading'
+                ? const Padding(
+                    padding: EdgeInsets.all(spaceLarge),
+                    child: CircularProgressIndicator(
+                      color: accentColor,
+                      strokeWidth: 3,
+                    ),
+                  )
+                : const Icon(
+                    Icons.mic_none_rounded,
+                    color: mutedColor,
+                    size: 32,
+                  ),
           ),
           const SizedBox(height: spaceLarge),
-          const Text('Listo para escuchar', style: emptyTitleStyle),
+          Text(title, textAlign: TextAlign.center, style: emptyTitleStyle),
           const SizedBox(height: spaceSmall),
-          const Text(
-            'Toca iniciar y acerca el teléfono a la bocina.',
-            textAlign: TextAlign.center,
-            style: emptyHintStyle,
-          ),
+          Text(hint, textAlign: TextAlign.center, style: emptyHintStyle),
         ],
       ),
     ),
@@ -323,7 +360,7 @@ List<TextSpan> highlightDigits(String text) {
 /// The three buttons, inside a floating bar with fully round ends.
 Widget buildControls({
   required bool isRunning,
-  required VoidCallback onToggle,
+  required VoidCallback? onToggle,
   required VoidCallback? onSmaller,
   required VoidCallback? onLarger,
 }) {
@@ -361,7 +398,7 @@ Widget buildControls({
   );
 }
 
-Widget buildMainButton(bool isRunning, VoidCallback onToggle) {
+Widget buildMainButton(bool isRunning, VoidCallback? onToggle) {
   return IconButton(
     onPressed: onToggle,
     tooltip: isRunning ? 'Pausar' : 'Iniciar',
@@ -369,6 +406,8 @@ Widget buildMainButton(bool isRunning, VoidCallback onToggle) {
     style: IconButton.styleFrom(
       backgroundColor: accentColor,
       foregroundColor: backgroundColor,
+      disabledBackgroundColor: trackColor,
+      disabledForegroundColor: disabledColor,
       fixedSize: const Size.square(mainButtonSize),
     ),
     // Cross-fades between the play and pause icons. The key changes with the
