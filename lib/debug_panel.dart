@@ -10,8 +10,13 @@ const maxVolumeThreshold = 0.1;
 /// Hidden panel to tune the volume threshold. A long press on the captions
 /// shows or hides it.
 Widget buildDebugPanel() {
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(spaceLarge, spaceMedium, spaceLarge, 0),
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: spaceMedium),
+    padding: const EdgeInsets.all(cardPadding),
+    decoration: BoxDecoration(
+      color: surfaceColor,
+      borderRadius: BorderRadius.circular(cardRadius),
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -26,7 +31,7 @@ Widget buildDebugPanel() {
         ),
         const SizedBox(height: spaceMedium),
         const Text(
-          'La barra se pinta de amarillo cuando el volumen pasa el umbral '
+          'La barra se pinta de dorado cuando el volumen pasa el umbral '
           'y cuenta como voz.',
           style: panelHintStyle,
         ),
@@ -43,6 +48,7 @@ Widget buildThresholdSlider(double threshold) {
         value: threshold,
         max: maxVolumeThreshold,
         activeColor: accentColor,
+        inactiveColor: trackColor,
         // The slider draws its own side margin; removing it lines the track
         // up with the labels and the volume bar.
         padding: const EdgeInsets.symmetric(vertical: spaceMedium),
@@ -62,9 +68,9 @@ Widget buildVolumeMeter(double volume) {
         // Same scale as the slider. Louder sound just fills the whole bar.
         value: (volume / maxVolumeThreshold).clamp(0, 1).toDouble(),
         minHeight: spaceSmall,
-        borderRadius: BorderRadius.circular(spaceSmall / 2),
+        borderRadius: BorderRadius.circular(innerRadius),
         color: isSpeech ? accentColor : mutedColor,
-        backgroundColor: disabledColor,
+        backgroundColor: trackColor,
       ),
     ],
   );

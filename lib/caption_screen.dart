@@ -97,6 +97,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
             // Slides the panel open and closed instead of making it jump.
             AnimatedSize(
               duration: quickAnimation,
+              curve: softCurve,
               child: showDebugPanel
                   ? buildDebugPanel()
                   : const SizedBox(width: double.infinity),
@@ -133,9 +134,24 @@ void showChunk(List<int> samples, bool isFinal) {
 
 void showMicPermissionMessage(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text(
+    SnackBar(
+      // Floating and rounded, like the rest of the screen.
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: trackColor,
+      elevation: 0, // No shadow: on a dark screen it only adds a black edge.
+      // Sits just above the button bar instead of covering it.
+      margin: const EdgeInsets.fromLTRB(
+        spaceMedium,
+        0,
+        spaceMedium,
+        spaceMedium + barHeight + spaceSmall,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(cardRadius),
+      ),
+      content: const Text(
         'Sin permiso de micrófono. Actívalo en los ajustes del teléfono.',
+        style: panelLabelStyle,
       ),
     ),
   );
@@ -151,7 +167,12 @@ Widget buildCaptionList(List<CaptionLine> lines, double fontSize) {
     // Reversed: the newest line sits at the bottom and the user scrolls up
     // to read older lines that are still in memory.
     reverse: true,
-    padding: const EdgeInsets.fromLTRB(spaceMedium, spaceLarge, spaceLarge, 0),
+    padding: const EdgeInsets.fromLTRB(
+      spaceMedium,
+      spaceMedium,
+      spaceMedium,
+      spaceCompact,
+    ),
     children: [
       for (var position = 0; position < newestFirst.length; position++)
         buildCaptionLine(
@@ -169,13 +190,34 @@ double opacityForPosition(int positionFromNewest) {
 }
 
 Widget buildEmptyHint() {
-  return const Center(
+  return Center(
     child: Padding(
-      padding: EdgeInsets.all(spaceXLarge),
-      child: Text(
-        'Toca iniciar para ver los subtítulos',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: mutedColor, fontSize: 20),
+      padding: const EdgeInsets.all(spaceXLarge),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: mainButtonSize,
+            height: mainButtonSize,
+            decoration: const BoxDecoration(
+              color: surfaceColor,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.mic_none_rounded,
+              color: mutedColor,
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: spaceLarge),
+          const Text('Listo para escuchar', style: emptyTitleStyle),
+          const SizedBox(height: spaceSmall),
+          const Text(
+            'Toca iniciar y acerca el teléfono a la bocina.',
+            textAlign: TextAlign.center,
+            style: emptyHintStyle,
+          ),
+        ],
       ),
     ),
   );
@@ -187,6 +229,7 @@ Widget buildCaptionLine(CaptionLine line, double fontSize, double opacity) {
     fontSize: fontSize,
     fontWeight: FontWeight.w500,
     height: 1.3,
+    letterSpacing: -0.2, // Large text reads better slightly tighter.
     fontFeatures: tabularFigures,
   );
   final translationStyle = TextStyle(
@@ -202,18 +245,27 @@ Widget buildCaptionLine(CaptionLine line, double fontSize, double opacity) {
     key: ValueKey(line.time),
     opacity: opacity,
     duration: gentleAnimation,
-    child: Padding(
-      padding: const EdgeInsets.only(bottom: spaceXLarge),
+    curve: softCurve,
+    // Each caption sits on its own rounded card.
+    child: Container(
+      margin: const EdgeInsets.only(bottom: spaceCompact),
+      padding: const EdgeInsets.all(cardPadding),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(cardRadius),
+      ),
       child: Row(
         // Baseline: the small tag sits on the same text line as the first
         // row of the large text, instead of floating at the top.
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          SizedBox(
-            width: tagWidth,
-            child: Text(line.language.toUpperCase(), style: tagStyle),
-          ),
+          // No tag while the language is unknown.
+          if (line.language.isNotEmpty)
+            SizedBox(
+              width: tagWidth,
+              child: Text(line.language.toUpperCase(), style: tagStyle),
+            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,6 +275,7 @@ Widget buildCaptionLine(CaptionLine line, double fontSize, double opacity) {
                 AnimatedDefaultTextStyle(
                   style: originalStyle,
                   duration: quickAnimation,
+                  curve: softCurve,
                   child: Text.rich(
                     TextSpan(children: highlightDigits(line.text)),
                   ),
@@ -233,6 +286,7 @@ Widget buildCaptionLine(CaptionLine line, double fontSize, double opacity) {
                     child: AnimatedDefaultTextStyle(
                       style: translationStyle,
                       duration: quickAnimation,
+                      curve: softCurve,
                       child: Text.rich(
                         TextSpan(children: highlightDigits(line.translation)),
                       ),
@@ -266,6 +320,7 @@ List<TextSpan> highlightDigits(String text) {
 
 // ---- Buttons ----
 
+/// The three buttons, inside a floating bar with fully round ends.
 Widget buildControls({
   required bool isRunning,
   required VoidCallback onToggle,
@@ -273,42 +328,58 @@ Widget buildControls({
   required VoidCallback? onLarger,
 }) {
   return Padding(
-    padding: const EdgeInsets.symmetric(vertical: spaceMedium),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        buildFontButton(
-          icon: Icons.text_decrease_rounded,
-          tooltip: 'Letra más chica',
-          onPressed: onSmaller,
+    padding: const EdgeInsets.only(top: spaceSmall, bottom: spaceMedium),
+    child: Center(
+      child: Container(
+        padding: const EdgeInsets.all(barPadding),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(barRadius),
         ),
-        const SizedBox(width: spaceXLarge),
-        IconButton(
-          onPressed: onToggle,
-          tooltip: isRunning ? 'Pausar' : 'Iniciar',
-          iconSize: 40,
-          style: IconButton.styleFrom(
-            backgroundColor: accentColor,
-            foregroundColor: backgroundColor,
-            fixedSize: const Size.square(mainButtonSize),
-          ),
-          // Cross-fades between the play and pause icons. The key changes
-          // with the state, which is what tells the switcher to animate.
-          icon: AnimatedSwitcher(
-            duration: quickAnimation,
-            child: Icon(
-              isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              key: ValueKey(isRunning),
+        child: Row(
+          mainAxisSize: MainAxisSize.min, // Only as wide as the buttons.
+          children: [
+            const SizedBox(width: barEndInset),
+            buildFontButton(
+              icon: Icons.text_decrease_rounded,
+              tooltip: 'Letra más chica',
+              onPressed: onSmaller,
             ),
-          ),
+            const SizedBox(width: spaceMedium),
+            buildMainButton(isRunning, onToggle),
+            const SizedBox(width: spaceMedium),
+            buildFontButton(
+              icon: Icons.text_increase_rounded,
+              tooltip: 'Letra más grande',
+              onPressed: onLarger,
+            ),
+            const SizedBox(width: barEndInset),
+          ],
         ),
-        const SizedBox(width: spaceXLarge),
-        buildFontButton(
-          icon: Icons.text_increase_rounded,
-          tooltip: 'Letra más grande',
-          onPressed: onLarger,
-        ),
-      ],
+      ),
+    ),
+  );
+}
+
+Widget buildMainButton(bool isRunning, VoidCallback onToggle) {
+  return IconButton(
+    onPressed: onToggle,
+    tooltip: isRunning ? 'Pausar' : 'Iniciar',
+    iconSize: 36,
+    style: IconButton.styleFrom(
+      backgroundColor: accentColor,
+      foregroundColor: backgroundColor,
+      fixedSize: const Size.square(mainButtonSize),
+    ),
+    // Cross-fades between the play and pause icons. The key changes with the
+    // state, which is what tells the switcher to animate.
+    icon: AnimatedSwitcher(
+      duration: quickAnimation,
+      switchInCurve: softCurve,
+      child: Icon(
+        isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+        key: ValueKey(isRunning),
+      ),
     ),
   );
 }
@@ -321,7 +392,7 @@ Widget buildFontButton({
   return IconButton(
     onPressed: onPressed,
     tooltip: tooltip,
-    iconSize: 28,
+    iconSize: 26,
     style: IconButton.styleFrom(
       foregroundColor: originalColor,
       disabledForegroundColor: disabledColor,
