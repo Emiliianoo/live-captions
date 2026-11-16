@@ -6,6 +6,7 @@ import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'audio.dart';
 import 'captions.dart';
+import 'translate.dart';
 
 // For now the app only listens to English.
 
@@ -114,7 +115,9 @@ Future<void> transcribeAndShow(List<int> samples, bool isFinal) async {
       // It was only noise. Take away the gray line if there was one.
       if (isFinal) removePartial();
     } else if (isFinal) {
-      showFinal(text, '', 'en'); // The translation comes later.
+      // Only finals are translated: a partial changes every second.
+      final translation = await translateToSpanish(text);
+      showFinal(text, translation, 'en');
     } else {
       showPartial(text, 'en');
     }

@@ -8,6 +8,7 @@ import 'captions.dart';
 import 'debug_panel.dart';
 import 'design.dart';
 import 'transcribe.dart';
+import 'translate.dart';
 
 /// How often we check for lines older than 3 minutes.
 const cleanupInterval = Duration(seconds: 10);
@@ -37,17 +38,21 @@ class _CaptionScreenState extends State<CaptionScreen> {
     WakelockPlus.enable(); // Keep the screen on while this screen is open.
     // Old lines are removed even while paused, so text never lingers.
     cleanupTimer = Timer.periodic(cleanupInterval, (_) => removeOldCaptions());
-    prepareModel();
+    prepareModels();
   }
 
-  /// Gets the Whisper model ready. The first time, this downloads it.
-  Future<void> prepareModel() async {
+  /// Gets the speech and translation models ready. The first time, this
+  /// downloads them.
+  Future<void> prepareModels() async {
     // Show the download message only when a download is really needed.
-    if (!await isWhisperModelDownloaded()) {
+    final hasSpeech = await isWhisperModelDownloaded();
+    final hasTranslation = await isTranslationModelDownloaded();
+    if (!hasSpeech || !hasTranslation) {
       setState(() => modelStatus = 'downloading');
     }
     try {
       await downloadWhisperModel();
+      await downloadTranslationModel();
       setState(() => modelStatus = 'ready');
     } catch (error) {
       debugPrint('Model download failed: $error'); // Usually: no internet.
@@ -66,7 +71,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
   Future<void> toggleRunning() async {
     // After a failed download, the button tries the download again.
     if (modelStatus == 'failed') {
-      prepareModel();
+      prepareModels();
       return;
     }
     if (modelStatus != 'ready') return;
@@ -214,11 +219,11 @@ Widget buildEmptyHint(String modelStatus) {
   var title = 'Listo para escuchar';
   var hint = 'Toca iniciar y acerca el teléfono a la bocina.';
   if (modelStatus == 'downloading') {
-    title = 'Descargando el modelo de voz';
-    hint = 'Solo pasa la primera vez. Conéctate a wifi.';
+    title = 'Descargando los modelos';
+    hint = 'Voz y traducción. Solo pasa la primera vez, conéctate a wifi.';
   }
   if (modelStatus == 'failed') {
-    title = 'No se pudo descargar el modelo';
+    title = 'No se pudieron descargar los modelos';
     hint = 'Revisa tu conexión y toca iniciar para reintentar.';
   }
 
