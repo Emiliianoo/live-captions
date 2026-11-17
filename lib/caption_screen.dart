@@ -32,6 +32,10 @@ class _CaptionScreenState extends State<CaptionScreen> {
   /// 'checking', 'downloading', 'ready' or 'failed'.
   String modelStatus = 'checking';
 
+  /// Why the models failed, shown on screen. A downloaded APK has no
+  /// console, so this is the only way to see the reason.
+  String modelError = '';
+
   @override
   void initState() {
     super.initState();
@@ -44,19 +48,25 @@ class _CaptionScreenState extends State<CaptionScreen> {
   /// Gets the speech and translation models ready. The first time, this
   /// downloads them.
   Future<void> prepareModels() async {
-    // Show the download message only when a download is really needed.
-    final hasSpeech = await isWhisperModelDownloaded();
-    final hasTranslation = await isTranslationModelDownloaded();
-    if (!hasSpeech || !hasTranslation) {
-      setState(() => modelStatus = 'downloading');
-    }
+    // The checks are inside the try too: if one of them fails, we must
+    // show 'failed'. Otherwise the status stays 'checking' forever and the
+    // start button silently does nothing.
     try {
+      // Show the download message only when a download is really needed.
+      final hasSpeech = await isWhisperModelDownloaded();
+      final hasTranslation = await isTranslationModelDownloaded();
+      if (!hasSpeech || !hasTranslation) {
+        setState(() => modelStatus = 'downloading');
+      }
       await downloadWhisperModel();
       await downloadTranslationModel();
       setState(() => modelStatus = 'ready');
     } catch (error) {
       debugPrint('Model download failed: $error'); // Usually: no internet.
-      setState(() => modelStatus = 'failed');
+      setState(() {
+        modelStatus = 'failed';
+        modelError = '$error';
+      });
     }
   }
 
@@ -121,7 +131,12 @@ class _CaptionScreenState extends State<CaptionScreen> {
                 child: ValueListenableBuilder<List<CaptionLine>>(
                   valueListenable: captions,
                   builder: (context, lines, _) {
-                    return buildCaptionList(lines, fontSize, modelStatus);
+                    return buildCaptionList(
+                      lines,
+                      fontSize,
+                      modelStatus,
+                      modelError,
+                    );
                   },
                 ),
               ),
@@ -136,8 +151,11 @@ class _CaptionScreenState extends State<CaptionScreen> {
             ),
             buildControls(
               isRunning: isRunning,
-              // Disabled while the model downloads.
-              onToggle: modelStatus == 'downloading' ? null : toggleRunning,
+              // Disabled until the models are checked and downloaded.
+              onToggle:
+                  modelStatus == 'checking' || modelStatus == 'downloading'
+                  ? null
+                  : toggleRunning,
               // A null callback disables the button at the size limits.
               onSmaller: fontSize > minFontSize
                   ? () => changeFontSize(-fontSizeStep)
@@ -184,8 +202,9 @@ Widget buildCaptionList(
   List<CaptionLine> lines,
   double fontSize,
   String modelStatus,
+  String modelError,
 ) {
-  if (lines.isEmpty) return buildEmptyHint(modelStatus);
+  if (lines.isEmpty) return buildEmptyHint(modelStatus, modelError);
 
   final newestFirst = lines.reversed.toList();
   // Stack: the clear button floats over the top right corner of the list.
@@ -241,16 +260,21 @@ double opacityForPosition(int positionFromNewest) {
 }
 
 /// What the screen says while there are no captions.
-Widget buildEmptyHint(String modelStatus) {
+Widget buildEmptyHint(String modelStatus, String modelError) {
   var title = 'Listo para escuchar';
   var hint = 'Toca iniciar y acerca el teléfono a la bocina.';
+  if (modelStatus == 'checking') {
+    title = 'Preparando los modelos';
+    hint = 'Un momento...';
+  }
   if (modelStatus == 'downloading') {
     title = 'Descargando los modelos';
     hint = 'Voz y traducción. Solo pasa la primera vez, conéctate a wifi.';
   }
   if (modelStatus == 'failed') {
     title = 'No se pudieron descargar los modelos';
-    hint = 'Revisa tu conexión y toca iniciar para reintentar.';
+    // The error text helps find the cause, since the APK has no console.
+    hint = 'Revisa tu conexión y toca iniciar para reintentar.\n$modelError';
   }
 
   return Center(
